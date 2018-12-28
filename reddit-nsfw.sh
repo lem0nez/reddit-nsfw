@@ -26,6 +26,7 @@ TMP_TAR='.lists.tar.tmp'
 TMP_DIR='.lists.tmp'
 GPG_PASSPHRASE='nsfw'
 SED_DIVIDER='@'
+CASE_INSENSITIVE='-i' # default insensitive
 
 DIVIDER=" $TEXT_BOLD$COLOR_RED--- --- --- ---$TEXT_RESET\\n"
 SED_PATTERN="s/(.+)\|(.+)\|(.+)\|(.*)\|(.*)/$DIVIDER"`
@@ -37,7 +38,7 @@ SED_PATTERN="s/(.+)\|(.+)\|(.+)\|(.*)\|(.*)/$DIVIDER"`
 
 main() {
   parse_params $@
-  curr_path="$(pwd)"
+  curr_path="$(dirname "$0")"
 
   if [[ ! -e "$curr_path/$ENCRYPTED_TAR" ]]; then
     echo 'Encrypted archive with lists of subreddits not exist!'
@@ -114,8 +115,8 @@ parse_params() {
               SEARCH_PLACE='descriptions'
               SEARCH_PATTERN='^.+\|[^|]*{PATTERN}[^|]*$'
               SED_HIGHLIGHT_PATTERN="s/^(.+)\|([^|]*)$/\1|$COLOR_BLUE\2/" ;;
-            i)
-              CASE_INSENSITIVE='-i' ;;
+            c)
+              CASE_INSENSITIVE=$(cat /dev/null) ;;
             h)
               show_help
               exit 0 ;;
@@ -149,7 +150,7 @@ show_help() {
       `"  $TEXT_BOLD-t$TEXT_RESET  titles;\n"`
       `"  $TEXT_BOLD-d$TEXT_RESET  descriptions.\n"`
       `"Other parameters:\n"`
-      `"  $TEXT_BOLD-i$TEXT_RESET  case insensitive;\n"`
+      `"  $TEXT_BOLD-c$TEXT_RESET  case sensitive (default insensitive);\n"`
       `"  $TEXT_BOLD-h$TEXT_RESET  show help.\n"
 }
 

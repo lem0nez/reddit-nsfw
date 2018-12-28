@@ -8,5 +8,5 @@ Usage: `./reddit-nsfw.sh {parameters} [pattern]`.
 + **-t**    titles;
 + **-d**    descriptions.
 #### Other parameters:
-+ **-i**    case insensitive;
++ **-c**    case sensitive (default insensitive);
 + **-h**    show help.
