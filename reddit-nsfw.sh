@@ -38,7 +38,8 @@ SED_PATTERN="s/(.+)\|(.+)\|(.+)\|(.*)\|(.*)/$DIVIDER"`
 
 main() {
   parse_params $@
-  curr_path="$(dirname "$0")"
+  curr_path="$(dirname "$(readlink -f "$0")")"
+  echo "$curr_path"
 
   if [[ ! -e "$curr_path/$ENCRYPTED_TAR" ]]; then
     echo 'Encrypted archive with lists of subreddits not exist!'
