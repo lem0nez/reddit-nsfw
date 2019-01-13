@@ -28,6 +28,9 @@ GPG_PASSPHRASE='nsfw'
 SED_DIVIDER='@'
 CASE_INSENSITIVE='-i' # default insensitive
 
+FAVOURITES_FILE='.favourites.txt'
+MAX_RANK=10819
+
 DIVIDER=" $TEXT_BOLD$COLOR_RED--- --- --- ---$TEXT_RESET\\n"
 SED_PATTERN="s/(.+)\|(.+)\|(.+)\|(.*)\|(.*)/$DIVIDER"`
     `"${COLOR_GRAY}Rank:$TEXT_RESET \1\\n"`
@@ -37,9 +40,8 @@ SED_PATTERN="s/(.+)\|(.+)\|(.+)\|(.*)\|(.*)/$DIVIDER"`
     `"${COLOR_GRAY}Description:$TEXT_RESET \5/"
 
 main() {
+  curr_path="$(pwd -P "$0")"
   parse_params $@
-  curr_path="$(dirname "$(readlink -f "$0")")"
-  echo "$curr_path"
 
   if [[ ! -e "$curr_path/$ENCRYPTED_TAR" ]]; then
     echo 'Encrypted archive with lists of subreddits not exist!'
@@ -49,6 +51,10 @@ main() {
   start_time=$(date +%s)
 
   printf "Searching for \"$COLOR_BLUE$PATTERN$TEXT_RESET\""
+
+  if [[ $SHOW_FAVOURITES == true ]]; then
+    printf " $TEXT_BOLD(favourites)$TEXT_RESET"
+  fi
   if [[ -n $SEARCH_PLACE ]]; then
     printf " in $TEXT_BOLD$SEARCH_PLACE$TEXT_RESET"
   fi
@@ -66,11 +72,13 @@ main() {
   for file in $curr_path/$TMP_DIR/*; do
     if [[ -n $SEARCH_PATTERN ]]; then
       pattern_swp="$(echo "$SEARCH_PATTERN" |
-      sed -r "s$SED_DIVIDER\{PATTERN\}$SED_DIVIDER$PATTERN$SED_DIVIDER")"
-          cat "$file" | grep -E $CASE_INSENSITIVE -B 0 -A 0 --color=never `
+          sed -r "s$SED_DIVIDER\{PATTERN\}$SED_DIVIDER$PATTERN$SED_DIVIDER")"
+      cat "$file" | grep -E -B 0 -A 0 --color=never "$FAVOURITES_PATTERN" |
+          grep -E $CASE_INSENSITIVE -B 0 -A 0 --color=never `
           `"$pattern_swp" | sed -r "$SED_HIGHLIGHT_PATTERN; $SED_PATTERN"
     else
-      cat "$file" | grep -E $CASE_INSENSITIVE -B 0 -A 0 --color=never `
+      cat "$file" | grep -E -B 0 -A 0 --color=never "$FAVOURITES_PATTERN" |
+          grep -E $CASE_INSENSITIVE -B 0 -A 0 --color=never `
           `"$PATTERN" | sed -r "$SED_PATTERN"
     fi
   done
@@ -78,6 +86,34 @@ main() {
   printf "${DIVIDER}Search finished in "`
       `"$TEXT_BOLD$(( $(date +%s) - $start_time ))$TEXT_RESET s.\n"
   rm -rf "$curr_path/$TMP_DIR"
+}
+
+add_favourite() {
+  if (( $1 < 1 || $1 > $MAX_RANK )); then
+    printf "Min rank is ${TEXT_BOLD}1$TEXT_RESET and"`
+        `" max is $TEXT_BOLD$MAX_RANK$TEXT_RESET!\n"
+    exit 1
+  elif [[ -n "$(cat "$curr_path/$FAVOURITES_FILE" 2>&1 | grep -E "^$1$")" ]]; then
+    printf "Subreddit with rank $TEXT_BOLD$1$TEXT_RESET already is favourite!\n"
+    exit 1
+  fi
+
+  echo "$1" >> "$curr_path/$FAVOURITES_FILE"
+  printf "Subreddit with rank $TEXT_BOLD$1$TEXT_RESET now is favourite.\n"
+}
+
+remove_favourite() {
+  if [[ -z "$(cat "$curr_path/$FAVOURITES_FILE" 2>&1 | grep -E "^$1$")" ]]; then
+    printf "Subreddit with rank $TEXT_BOLD$1$TEXT_RESET not favourite!\n"
+    exit 1
+  fi
+
+  sed -i -r "/^$1$/d" "$curr_path/$FAVOURITES_FILE"
+  if [[ -z "$(cat "$curr_path/$FAVOURITES_FILE")" ]]; then
+    rm "$curr_path/$FAVOURITES_FILE"
+  fi
+  printf "Subreddit with rank $TEXT_BOLD$1$TEXT_RESET"`
+      `" excluded from the favourites list.\n"
 }
 
 parse_params() {
@@ -116,13 +152,39 @@ parse_params() {
               SEARCH_PLACE='descriptions'
               SEARCH_PATTERN='^.+\|[^|]*{PATTERN}[^|]*$'
               SED_HIGHLIGHT_PATTERN="s/^(.+)\|([^|]*)$/\1|$COLOR_BLUE\2/" ;;
+            f)
+              if [[ ! -e "$curr_path/$FAVOURITES_FILE" ]]; then
+                echo 'No favourites subreddits!'
+                exit 1
+              fi
+
+              FAVOURITES_PATTERN="^($(cat "$curr_path/$FAVOURITES_FILE" | "`
+                  `"tr '\n' '|' | sed -r 's/\|$//' ))\|"
+              SHOW_FAVOURITES=true ;;
+            a)
+              shift
+              if [[ ! $1 =~ (^[0-9]+$) ]]; then
+                echo 'To add subreddit to the favourites list need specify a rank!'
+                exit 1
+              fi
+              add_favourite "$1"
+              exit 0 ;;
+            e)
+              shift
+              if [[ ! $1 =~ (^[0-9]+$) ]]; then
+                echo 'To exclude subreddit from the favourites list'`
+                    `' need specify a rank!'
+                exit 1
+              fi
+              remove_favourite "$1"
+              exit 0 ;;
             c)
               CASE_INSENSITIVE=$(cat /dev/null) ;;
             h)
               show_help
               exit 0 ;;
             *)
-              printf "Invalid parameter: $TEXT_BOLD$key$TEXT_RESET!"
+              printf "Invalid parameter: $TEXT_BOLD$key$TEXT_RESET!\n"
               exit 1 ;;
           esac
         done
@@ -133,12 +195,18 @@ parse_params() {
     esac
   done
 
-  if [[ -z $PATTERN ]]; then
+  if [[ -n $FAVOURITES_PATTERN && -z $PATTERN ]]; then
+      PATTERN='.+'
+  elif [[ -z $PATTERN ]]; then
     echo 'Please, specify pattern!'
     exit 1
   elif [[ $PATTERN =~ $SED_DIVIDER ]]; then
     echo "Pattern shouldn't contain \"$SED_DIVIDER\" symbol!"
     exit 1
+  fi
+
+  if [[ -z $FAVOURITES_PATTERN ]]; then
+    FAVOURITES_PATTERN='.+'
   fi
 }
 
@@ -150,6 +218,10 @@ show_help() {
       `"  $TEXT_BOLD-u$TEXT_RESET  URLs;\n"`
       `"  $TEXT_BOLD-t$TEXT_RESET  titles;\n"`
       `"  $TEXT_BOLD-d$TEXT_RESET  descriptions.\n"`
+      `"Favourites:\n"`
+      `"  $TEXT_BOLD-f$TEXT_RESET  show the favourites list;\n"`
+      `"  $TEXT_BOLD-a [rank]$TEXT_RESET  add subreddit to the favourites;\n"`
+      `"  $TEXT_BOLD-e [rank]$TEXT_RESET  exclude subreddit from the favourites.\n"`
       `"Other parameters:\n"`
       `"  $TEXT_BOLD-c$TEXT_RESET  case sensitive (default insensitive);\n"`
       `"  $TEXT_BOLD-h$TEXT_RESET  show help.\n"

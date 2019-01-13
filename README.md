@@ -7,6 +7,10 @@ Usage: `./reddit-nsfw.sh {parameters} [pattern]`.
 + **-u**    URLs;
 + **-t**    titles;
 + **-d**    descriptions.
+#### Favourites:
++ **-f**    show the favourites list;
++ **-a [rank]**    add subreddit to the favourites;
++ **-e [rank]**    exclude subreddit from the favourites.
 #### Other parameters:
 + **-c**    case sensitive (default insensitive);
 + **-h**    show help.
