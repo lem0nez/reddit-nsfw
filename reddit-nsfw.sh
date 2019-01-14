@@ -40,7 +40,7 @@ SED_PATTERN="s/(.+)\|(.+)\|(.+)\|(.*)\|(.*)/$DIVIDER"`
     `"${COLOR_GRAY}Description:$TEXT_RESET \5/"
 
 main() {
-  curr_path="$(pwd -P "$0")"
+  curr_path="$(dirname "$(readlink -f "$0")")"
   parse_params $@
 
   if [[ ! -e "$curr_path/$ENCRYPTED_TAR" ]]; then
