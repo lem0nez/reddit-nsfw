@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # Copyright © 2019 Nikita Dudko. All rights reserved.
 # Contacts: <nikita.dudko.95@gmail.com>
 #
@@ -13,218 +15,225 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-#!/usr/bin/env bash
+TMP_FILE=$(mktemp -ut 'tmp.reddit-nsfw_XXXXXX')
+cleanup() {
+  rm -f "$TMP_FILE"
+}
+trap cleanup EXIT
 
-COLOR_GRAY='\x1b[38;5;250m'
-COLOR_BLUE='\x1b[38;5;33m'
-COLOR_RED='\x1b[38;5;197m'
-TEXT_BOLD='\x1b[1m'
-TEXT_RESET='\x1b[0m'
+RED=197
+BLUE=33
+GRAY=250
+OUT_BOLD='\x1b[1m'
+OUT_RESET='\x1b[0m'
 
-ENCRYPTED_TAR='lists_29-08-2016.tar.enc'
-TMP_TAR='.lists.tar.tmp'
-TMP_DIR='.lists.tmp'
-GPG_PASSPHRASE='nsfw'
-SED_DIVIDER='@'
-CASE_INSENSITIVE='-i' # default insensitive
-
-FAVOURITES_FILE='.favourites.txt'
-MAX_RANK=10819
-
-DIVIDER=" $TEXT_BOLD$COLOR_RED--- --- --- ---$TEXT_RESET\\n"
-SED_PATTERN="s/(.+)\|(.+)\|(.+)\|(.*)\|(.*)/$DIVIDER"`
-    `"${COLOR_GRAY}Rank:$TEXT_RESET \1\\n"`
-    `"${COLOR_GRAY}Subscribers:$TEXT_RESET \3\\n"`
-    `"${COLOR_GRAY}URL:$TEXT_RESET \2\\n"`
-    `"${COLOR_GRAY}Title:$TEXT_RESET $TEXT_BOLD\4$TEXT_RESET\\n"`
-    `"${COLOR_GRAY}Description:$TEXT_RESET \5/"
+GPG_PASS='nsfw'
+FAVOURITES_FILE="reddit-nsfw_favourites.list"
 
 main() {
-  curr_path="$(dirname "$(readlink -f "$0")")"
-  parse_params $@
-
-  if [[ ! -e "$curr_path/$ENCRYPTED_TAR" ]]; then
-    echo 'Encrypted archive with lists of subreddits not exist!'
-    exit 1
-  fi
-
-  start_time=$(date +%s)
-
-  printf "Searching for \"$COLOR_BLUE$PATTERN$TEXT_RESET\""
-
-  if [[ $SHOW_FAVOURITES == true ]]; then
-    printf " $TEXT_BOLD(favourites)$TEXT_RESET"
-  fi
-  if [[ -n $SEARCH_PLACE ]]; then
-    printf " in $TEXT_BOLD$SEARCH_PLACE$TEXT_RESET"
-  fi
-  printf "...\n"
-
-  rm -f "$curr_path/$TMP_TAR"
-  echo "$GPG_PASSPHRASE" | gpg --batch --passphrase-fd 0 `
-      `-o "$curr_path/$TMP_TAR" -d "$curr_path/$ENCRYPTED_TAR" &> /dev/null
-
-  rm -rf "$curr_path/$TMP_DIR"
-  mkdir "$curr_path/$TMP_DIR"
-  tar -xf "$curr_path/$TMP_TAR" -C "$curr_path/$TMP_DIR"
-  rm -f "$curr_path/$TMP_TAR"
-
-  for file in $curr_path/$TMP_DIR/*; do
-    if [[ -n $SEARCH_PATTERN ]]; then
-      pattern_swp="$(echo "$SEARCH_PATTERN" |
-          sed -r "s$SED_DIVIDER\{PATTERN\}$SED_DIVIDER$PATTERN$SED_DIVIDER")"
-      cat "$file" | grep -E -B 0 -A 0 --color=never "$FAVOURITES_PATTERN" |
-          grep -E $CASE_INSENSITIVE -B 0 -A 0 --color=never `
-          `"$pattern_swp" | sed -r "$SED_HIGHLIGHT_PATTERN; $SED_PATTERN"
-    else
-      cat "$file" | grep -E -B 0 -A 0 --color=never "$FAVOURITES_PATTERN" |
-          grep -E $CASE_INSENSITIVE -B 0 -A 0 --color=never `
-          `"$PATTERN" | sed -r "$SED_PATTERN"
-    fi
-  done
-
-  printf "${DIVIDER}Search finished in "`
-      `"$TEXT_BOLD$(( $(date +%s) - $start_time ))$TEXT_RESET s.\n"
-  rm -rf "$curr_path/$TMP_DIR"
-}
-
-add_favourite() {
-  if (( $1 < 1 || $1 > $MAX_RANK )); then
-    printf "Min rank is ${TEXT_BOLD}1$TEXT_RESET and"`
-        `" max is $TEXT_BOLD$MAX_RANK$TEXT_RESET!\n"
-    exit 1
-  elif [[ -n "$(cat "$curr_path/$FAVOURITES_FILE" 2>&1 | grep -E "^$1$")" ]]; then
-    printf "Subreddit with rank $TEXT_BOLD$1$TEXT_RESET already is favourite!\n"
-    exit 1
-  fi
-
-  echo "$1" >> "$curr_path/$FAVOURITES_FILE"
-  printf "Subreddit with rank $TEXT_BOLD$1$TEXT_RESET now is favourite.\n"
-}
-
-remove_favourite() {
-  if [[ -z "$(cat "$curr_path/$FAVOURITES_FILE" 2>&1 | grep -E "^$1$")" ]]; then
-    printf "Subreddit with rank $TEXT_BOLD$1$TEXT_RESET not favourite!\n"
-    exit 1
-  fi
-
-  sed -i -r "/^$1$/d" "$curr_path/$FAVOURITES_FILE"
-  if [[ -z "$(cat "$curr_path/$FAVOURITES_FILE")" ]]; then
-    rm "$curr_path/$FAVOURITES_FILE"
-  fi
-  printf "Subreddit with rank $TEXT_BOLD$1$TEXT_RESET"`
-      `" excluded from the favourites list.\n"
-}
-
-parse_params() {
   if [[ -z $1 ]]; then
     show_help
-    exit 1
+    exit 0
   fi
 
   while [[ -n $1 ]]; do
-    key=$1
-    case $key in
-      -[a-z]*)
-        for (( i = 1; i < ${#key}; ++i )); do
-          param=${key:$i:1}
-          case $param in
-            r)
-              SEARCH_PLACE='ranks'
-              SEARCH_PATTERN='^[^|]*{PATTERN}[^|]*\|.+$'
-              SED_HIGHLIGHT_PATTERN="s/^([^|]+)\|(.+)$/$COLOR_BLUE\1|\2/" ;;
-            s)
-              SEARCH_PLACE='number of subscribers'
-              SEARCH_PATTERN='^[^|]+\|[^|]+\|[^|]*{PATTERN}[^|]*\|.+$'
-              SED_HIGHLIGHT_PATTERN=`
-                  `"s/^([^|]+)\|([^|]+)\|([^|]+)\|(.+)$/\1|\2|$COLOR_BLUE\3|\4/" ;;
-            u)
-              SEARCH_PLACE='URLs'
-              SEARCH_PATTERN='^[^|]+\|[^|]*{PATTERN}[^|]*\|.+$'
-              SED_HIGHLIGHT_PATTERN=`
-                  `"s/^([^|]+)\|([^|]+)\|(.+)$/\1|$COLOR_BLUE\2|\3/" ;;
-            t)
-              SEARCH_PLACE='titles'
-              SEARCH_PATTERN='^.+\|[^|]*{PATTERN}[^|]*\|[^|]*$'
-              SED_HIGHLIGHT_PATTERN=`
-                  `"s/^(.+)\|([^|]*)\|([^|]*)$/\1|$COLOR_BLUE\2|\3/" ;;
-            d)
-              SEARCH_PLACE='descriptions'
-              SEARCH_PATTERN='^.+\|[^|]*{PATTERN}[^|]*$'
-              SED_HIGHLIGHT_PATTERN="s/^(.+)\|([^|]*)$/\1|$COLOR_BLUE\2/" ;;
-            f)
-              if [[ ! -e "$curr_path/$FAVOURITES_FILE" ]]; then
-                echo 'No favourites subreddits!'
-                exit 1
-              fi
+    case $1 in
+      -r|--rank)
+        check_pattern "$2"
+        search "^[^|]*$2[^|]*\\|" 'ranks'
+        shift && shift ;;
+      -s|--subscribers)
+        check_pattern "$2"
+        search "^[^|]+\\|[^|]*$2[^|]*\\|" 'number of subscribers'
+        shift && shift ;;
+      -u|--url)
+        check_pattern "$2"
+        search "^[^|]+\\|[^|]+\\|[^|]*$2[^|]*\\|" 'URLs'
+        shift && shift ;;
+      -t|--title)
+        check_pattern "$2"
+        search "\\|[^|]*$2[^|]*\\|[^|]*$" 'titles'
+        shift && shift ;;
+      -d|--description)
+        check_pattern "$2"
+        search "\\|[^|]*$2[^|]*$" 'descriptions'
+        shift && shift ;;
+      -f|--favourites)
+        if [[ ${2::1} != '-' ]]; then
+          pattern=$2
+          shift
+        fi
 
-              FAVOURITES_PATTERN="^($(cat "$curr_path/$FAVOURITES_FILE" | "`
-                  `"tr '\n' '|' | sed -r 's/\|$//' ))\|"
-              SHOW_FAVOURITES=true ;;
-            a)
-              shift
-              if [[ ! $1 =~ (^[0-9]+$) ]]; then
-                echo 'To add subreddit to the favourites list need specify a rank!'
-                exit 1
-              fi
-              add_favourite "$1"
-              exit 0 ;;
-            e)
-              shift
-              if [[ ! $1 =~ (^[0-9]+$) ]]; then
-                echo 'To exclude subreddit from the favourites list'`
-                    `' need specify a rank!'
-                exit 1
-              fi
-              remove_favourite "$1"
-              exit 0 ;;
-            c)
-              CASE_INSENSITIVE=$(cat /dev/null) ;;
-            h)
-              show_help
-              exit 0 ;;
-            *)
-              printf "Invalid parameter: $TEXT_BOLD$key$TEXT_RESET!\n"
-              exit 1 ;;
-          esac
-        done
+        show_favourites "$pattern"
         shift ;;
+      -a|--add)
+        add_favourite "$2"
+        shift && shift ;;
+      -e|--exclude)
+        exclude_favourite "$2"
+        shift && shift ;;
+      -c|--case-sensitive)
+        CASE_SENSITIVE=true
+        shift ;;
+      -h|--help)
+        show_help
+        exit 0 ;;
+      -*)
+        printf >&2 "Unrecognized parameter: $OUT_BOLD%s$OUT_RESET!\\n" "$1"
+        exit 1 ;;
       *)
-        PATTERN=$key
+        search "$1"
         shift ;;
     esac
   done
+}
 
-  if [[ -n $FAVOURITES_PATTERN && -z $PATTERN ]]; then
-      PATTERN='.+'
-  elif [[ -z $PATTERN ]]; then
-    echo 'Please, specify pattern!'
-    exit 1
-  elif [[ $PATTERN =~ $SED_DIVIDER ]]; then
-    echo "Pattern shouldn't contain \"$SED_DIVIDER\" symbol!"
+# First parameter — a pattern.
+# Second parameter (not necessary) — a search place.
+search() {
+  printf "Searching for the pattern results"
+  if [[ ! -z $2 ]]; then
+    printf " in $OUT_BOLD%s$OUT_RESET" "$2"
+  fi
+  echo '...'
+
+  if [[ $CASE_SENSITIVE != true ]]; then
+    insensitive_par='-i'
+  fi
+
+  get_list |
+      grep --color=never --no-group-separator -B 0 -A 0 $insensitive_par -E "$1" |
+      sed -r "s/^([^|]+)\\|([^|]+)\\|([^|]+)\\|([^|]+)\\|([^|]*)$/"`
+      `" $OUT_BOLD$(get_col $RED)--- --- --- ---$OUT_RESET\\n"`
+      `"$(get_col $GRAY)Rank: $(get_col $BLUE)\\1\\n"`
+      `"$(get_col $GRAY)Subscribers:$OUT_RESET \\2\\n"`
+      `"$(get_col $GRAY)URL:$OUT_RESET www.reddit.com\\/\\3\\n"`
+      `"$(get_col $GRAY)Title:$OUT_RESET $OUT_BOLD\\4$OUT_RESET\\n"`
+      `"$(get_col $GRAY)Description:$OUT_RESET \\5/"
+  CASE_SENSITIVE=false
+}
+
+show_favourites() {
+  favourites=$(tr '\n' '|' < "$(get_favourites_path)")
+
+  if [[ -z $favourites ]]; then
+    echo >&2 'No favourite subreddits!'
     exit 1
   fi
 
-  if [[ -z $FAVOURITES_PATTERN ]]; then
-    FAVOURITES_PATTERN='.+'
+  search "^($favourites)\\|.*$1" 'favourites'
+}
+
+# First parameter — a rank.
+add_favourite() {
+  check_rank "$1"
+  favourites_path=$(get_favourites_path)
+
+  if [[ -n $(grep -E "^$1$" < "$favourites_path") ]]; then
+    printf >&2 "Subreddit with the rank $(get_col $BLUE)%i$OUT_RESET "`
+        `"already in the list!\\n" "$1"
+    exit 1
   fi
+
+  title=$(get_list | grep --color=never -B 0 -A 0 -E "^$1\\|" |
+      awk -F '|' '{print $4}')
+
+  if [[ -z $title ]]; then
+    printf >&2 "Subreddit with the rank $(get_col $BLUE)%i$OUT_RESET "`
+        `"didn't exist!\\n" "$1"
+    exit 1
+  fi
+
+  echo "$1" >> "$favourites_path"
+  printf "Subreddit \"$OUT_BOLD%s$OUT_RESET\" added to the favourites list.\\n" `
+      `"$title"
+}
+
+# First parameter — a rank.
+exclude_favourite() {
+  check_rank "$1"
+  favourites_path=$(get_favourites_path)
+
+  if [[ -z $(grep -E "^$1$" < "$favourites_path") ]]; then
+    printf >&2 "Subreddit with the rank $(get_col $BLUE)%i$OUT_RESET "`
+        `"not in the favourites list!\\n" "$1"
+    exit 1
+  fi
+
+  sed -i -r "/^$1$/d" "$favourites_path"
+  title=$(get_list | grep --color=never -B 0 -A 0 -E "^$1\\|" |
+      awk -F '|' '{print $4}')
+
+  printf "Subreddit \"$OUT_BOLD%s$OUT_RESET\" "`
+      `"excluded from the favourites list.\\n" "$title"
 }
 
 show_help() {
-  printf "Usage: reddit-nsfw.sh {parameters} [pattern].\n"`
-      `"Search in (only one parameter can be used):\n"`
-      `"  $TEXT_BOLD-r$TEXT_RESET  ranks;\n"`
-      `"  $TEXT_BOLD-s$TEXT_RESET  number of subscribers;\n"`
-      `"  $TEXT_BOLD-u$TEXT_RESET  URLs;\n"`
-      `"  $TEXT_BOLD-t$TEXT_RESET  titles;\n"`
-      `"  $TEXT_BOLD-d$TEXT_RESET  descriptions.\n"`
-      `"Favourites:\n"`
-      `"  $TEXT_BOLD-f$TEXT_RESET  show the favourites list;\n"`
-      `"  $TEXT_BOLD-a [rank]$TEXT_RESET  add subreddit to the favourites;\n"`
-      `"  $TEXT_BOLD-e [rank]$TEXT_RESET  exclude subreddit from the favourites.\n"`
-      `"Other parameters:\n"`
-      `"  $TEXT_BOLD-c$TEXT_RESET  case sensitive (default insensitive);\n"`
-      `"  $TEXT_BOLD-h$TEXT_RESET  show help.\n"
+  printf "Usage: ${OUT_BOLD}reddit-nsfw${OUT_RESET} [parameters] <pattern> ...\\n"`
+      `"\\nSearch place:\\n"`
+      `"  ${OUT_BOLD}-r, --rank${OUT_RESET}           ranks;\\n"`
+      `"  ${OUT_BOLD}-s, --subscribers${OUT_RESET}    number of subscribers;\\n"`
+      `"  ${OUT_BOLD}-u, --url${OUT_RESET}            URLs;\\n"`
+      `"  ${OUT_BOLD}-t, --title${OUT_RESET}          titles;\\n"`
+      `"  ${OUT_BOLD}-d, --description${OUT_RESET}    descriptions.\\n"`
+      `"\\nFavourites:\\n"`
+      `"  ${OUT_BOLD}-f, --favourites [pattern]${OUT_RESET}    "`
+          `"show favourites;\\n"`
+      `"  ${OUT_BOLD}-a, --add <rank>${OUT_RESET}              "`
+          `"add subreddit to the favourites;\\n"`
+      `"  ${OUT_BOLD}-e, --exclude <rank>${OUT_RESET}          "`
+          `"exclude subreddit from the favourites.\\n"`
+      `"\\nOther parameters:\\n"`
+      `"  ${OUT_BOLD}-c, --case-sensitive${OUT_RESET}    case sensitive "`
+          `"(by default is case insensitive);\\n"`
+      `"  ${OUT_BOLD}-h, --help${OUT_RESET}              show help.\\n"
 }
 
-main $@
+# First parameter — color code.
+get_col() {
+  printf '\x1b[38;5;%dm' "$1"
+}
+
+# Return newest subreddits list.
+get_list() {
+  if [[ ! -e $TMP_FILE ]]; then
+    lists_path="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lists"
+    echo "$GPG_PASS" | gpg --batch --passphrase-fd 0 -o "$TMP_FILE" `
+        `"$lists_path/$(ls -r1 "$lists_path" | head -1)" &> /dev/null
+
+    if [[ ! -e $TMP_FILE ]]; then
+      echo >&2 "Can't decrypt a list file!"
+      exit 1
+    fi
+  fi
+  cat "$TMP_FILE"
+}
+
+check_pattern() {
+  if [[ -z $1 || ${1::1} == '-' ]]; then
+    echo >&2 'Please, specify a pattern!'
+    exit 1
+  fi
+}
+
+check_rank() {
+  if [[ ! $1 =~ ([0-9]+) ]]; then
+    echo >&2 'Please, specify a rank!'
+    exit 1
+  fi
+}
+
+get_favourites_path() {
+  if [[ -z $XDG_CONFIG_HOME ]]; then
+    XDG_CONFIG_HOME="$HOME/.config"
+  fi
+
+  if [[ ! -e $XDG_CONFIG_HOME/$FAVOURITES_FILE ]]; then
+    mkdir -p "$XDG_CONFIG_HOME"
+    touch "$XDG_CONFIG_HOME/$FAVOURITES_FILE"
+  fi
+
+  echo "$XDG_CONFIG_HOME/$FAVOURITES_FILE"
+}
+
+main "$@"
