@@ -86,6 +86,8 @@ main() {
         shift ;;
     esac
   done
+
+  exit 0
 }
 
 # First parameter — a pattern.
@@ -109,7 +111,8 @@ search() {
       `"$(get_col $GRAY)Subscribers:$OUT_RESET \\2\\n"`
       `"$(get_col $GRAY)URL:$OUT_RESET www.reddit.com\\/\\3\\n"`
       `"$(get_col $GRAY)Title:$OUT_RESET $OUT_BOLD\\4$OUT_RESET\\n"`
-      `"$(get_col $GRAY)Description:$OUT_RESET \\5/"
+      `"Description: \\5/; s/\nDescription: $//g;"`
+      `"s/(\nDescription:)/$(get_col $GRAY)\1$OUT_RESET/g"
   CASE_SENSITIVE=false
 }
 
